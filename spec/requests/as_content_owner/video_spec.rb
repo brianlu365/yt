@@ -14,11 +14,13 @@ describe Yt::Video, :partner do
       end
 
       [:views, :uniques, :comments, :likes, :dislikes, :shares,
-       :subscribers_gained, :subscribers_lost, :favorites_added,
+       :subscribers_gained, :subscribers_lost,
        :videos_added_to_playlists, :videos_removed_from_playlists,
-       :favorites_removed, :estimated_minutes_watched, :average_view_duration,
+       :estimated_minutes_watched, :average_view_duration,
        :average_view_percentage, :impressions, :monetized_playbacks,
        :annotation_clicks, :annotation_click_through_rate, :playback_based_cpm,
+       :card_impressions, :card_clicks, :card_click_rate,
+       :card_teaser_impressions, :card_teaser_clicks, :card_teaser_click_rate,
        :annotation_close_rate, :earnings].each do |metric|
         describe "#{metric} can be retrieved for a range of days" do
           let(:date_in) { ENV['YT_TEST_PARTNER_VIDEO_DATE'] }
@@ -88,35 +90,16 @@ describe Yt::Video, :partner do
         end
       end
 
-      {views: Integer, comments: Integer, dislikes: Integer,
-       estimated_minutes_watched: Integer, average_view_duration: Integer,
-       average_view_percentage: Float, impressions: Integer,
-       subscribers_lost: Integer, subscribers_gained: Integer, likes: Integer,
-       monetized_playbacks: Integer, earnings: Float}.each do |metric, type|
-        describe "#{metric} can be retrieved for a specific day" do
-          let(:metric) { metric }
-          let(:result) { video.public_send "#{metric}_on", date }
-
-          context 'in which the video had data' do
-            let(:date) { ENV['YT_TEST_PARTNER_VIDEO_DATE'] }
-            it { expect(result).to be_a type }
-          end
-
-          context 'in the future' do
-            let(:date) { 5.days.from_now }
-            it { expect(result).to be_nil }
-          end
-        end
-      end
-
       {views: Integer, comments: Integer, likes: Integer, dislikes: Integer,
        shares: Integer, subscribers_gained: Integer, subscribers_lost: Integer,
-       favorites_added: Integer,
        videos_added_to_playlists: Integer, videos_removed_from_playlists: Integer,
        estimated_minutes_watched: Integer, average_view_duration: Integer,
        average_view_percentage: Float, impressions: Integer,
        monetized_playbacks: Integer, annotation_clicks: Integer,
        annotation_click_through_rate: Float, annotation_close_rate: Float,
+       card_impressions: Integer, card_clicks: Integer,
+       card_click_rate: Float, card_teaser_impressions: Integer,
+       card_teaser_clicks: Integer, card_teaser_click_rate: Float,
        earnings: Float}.each do |metric, type|
         describe "#{metric} can be grouped by range" do
           let(:metric) { metric }
@@ -139,34 +122,13 @@ describe Yt::Video, :partner do
         end
       end
 
-      {favorites_removed: Integer}.each do |metric, type|
-        describe "#{metric} can be grouped by range" do
-          let(:id) { 'NeMlqbX2Ifg' }
-          let(:metric) { metric }
-
-          context 'without a :by option (default)' do
-            let(:result) { video.public_send metric }
-            specify do
-              expect(result.size).to be 1
-              expect(result[:total]).to be_a type
-            end
-          end
-
-          context 'with the :by option set to :range' do
-            let(:result) { video.public_send metric, by: :range }
-            specify do
-              expect(result.size).to be 1
-              expect(result[:total]).to be_a type
-            end
-          end
-        end
-      end
-
       [:views, :comments, :likes, :dislikes, :shares,
-       :subscribers_gained, :subscribers_lost, :favorites_added,
+       :subscribers_gained, :subscribers_lost,
        :videos_added_to_playlists, :videos_removed_from_playlists,
        :estimated_minutes_watched, :average_view_duration,
        :average_view_percentage, :impressions, :monetized_playbacks,
+       :card_impressions, :card_clicks, :card_click_rate,
+       :card_teaser_impressions, :card_teaser_clicks, :card_teaser_click_rate,
        :annotation_clicks, :annotation_click_through_rate,
        :annotation_close_rate, :earnings].each do |metric|
         describe "#{metric} can be retrieved for a single country" do
@@ -189,6 +151,8 @@ describe Yt::Video, :partner do
       end
 
       [:views, :annotation_clicks, :annotation_click_through_rate,
+       :card_impressions, :card_clicks, :card_click_rate,
+       :card_teaser_impressions, :card_teaser_clicks, :card_teaser_click_rate,
        :annotation_close_rate].each do |metric|
         describe "#{metric} can be retrieved for a single country" do
           let(:result) { video.public_send metric, options }
@@ -213,10 +177,13 @@ describe Yt::Video, :partner do
         metrics = {views: Integer, uniques: Integer,
           estimated_minutes_watched: Integer, comments: Integer, likes: Integer,
           dislikes: Integer, shares: Integer, subscribers_gained: Integer,
-          subscribers_lost: Integer, favorites_added: Integer,
+          subscribers_lost: Integer,
           videos_added_to_playlists: Integer, videos_removed_from_playlists: Integer,
-          favorites_removed: Integer, average_view_duration: Integer,
+          average_view_duration: Integer,
           average_view_percentage: Float, annotation_clicks: Integer,
+          card_impressions: Integer, card_clicks: Integer,
+          card_click_rate: Float, card_teaser_impressions: Integer,
+          card_teaser_clicks: Integer, card_teaser_click_rate: Float,
           annotation_click_through_rate: Float,
           annotation_close_rate: Float, earnings: Float, impressions: Integer,
           monetized_playbacks: Integer}
@@ -434,6 +401,17 @@ describe Yt::Video, :partner do
         end
       end
 
+      describe 'views can be grouped by subscribed statuses' do
+        let(:range) { {since: ENV['YT_TEST_PARTNER_VIDEO_DATE']} }
+        let(:keys) { Yt::Collections::Reports::SUBSCRIBED_STATUSES.keys }
+
+        specify 'with the :by option set to subscribed statuses' do
+          views = video.views range.merge by: :subscribed_status
+          expect(views.keys - keys).to be_empty
+          expect(views.values).to all(be_an Integer)
+        end
+      end
+
       describe 'uniques can be retrieved for a single US state' do
         let(:state_code) { 'NY' }
         let(:result) { video.uniques since: date, by: by, in: location }
@@ -631,49 +609,6 @@ describe Yt::Video, :partner do
           expect(videos_removed_from_playlists.values).to all(be_an Integer)
         end
       end
-
-      describe 'added favorites can be grouped by day' do
-        let(:range) { {since: 4.days.ago.to_date, until: 3.days.ago.to_date} }
-        let(:keys) { range.values }
-
-        specify 'with the :by option set to :day' do
-          favorites_added = video.favorites_added range.merge by: :day
-          expect(favorites_added.keys).to eq range.values
-        end
-      end
-
-      describe 'added favorites can be grouped by country' do
-        let(:range) { {since: ENV['YT_TEST_PARTNER_VIDEO_DATE']} }
-
-        specify 'with the :by option set to :country' do
-          favorites_added = video.favorites_added range.merge by: :country
-          expect(favorites_added.keys).to all(be_a String)
-          expect(favorites_added.keys.map(&:length).uniq).to eq [2]
-          expect(favorites_added.values).to all(be_an Integer)
-        end
-      end
-
-      describe 'removed favorites can be grouped by day' do
-        let(:range) { {since: 4.days.ago.to_date, until: 3.days.ago.to_date} }
-        let(:keys) { range.values }
-
-        specify 'with the :by option set to :day' do
-          favorites_removed = video.favorites_removed range.merge by: :day
-          expect(favorites_removed.keys).to eq range.values
-        end
-      end
-
-      # TODO: Remove "removed favorites" since it’s deprecated!
-      # describe 'removed favorites can be grouped by country' do
-      #   let(:range) { {since: ENV['YT_TEST_PARTNER_VIDEO_DATE']} }
-      #
-      #   specify 'with the :by option set to :country' do
-      #     favorites_removed = video.favorites_removed range.merge by: :country
-      #     expect(favorites_removed.keys).to all(be_a String)
-      #     expect(favorites_removed.keys.map(&:length).uniq).to eq [2]
-      #     expect(favorites_removed.values).to all(be_an Integer)
-      #   end
-      # end
 
       describe 'estimated minutes watched can be retrieved for a single US state' do
         let(:state_code) { 'NY' }
